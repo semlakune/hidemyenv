@@ -10,7 +10,7 @@ import (
 
 func TestInitProjectCreatesSafeDefaults(t *testing.T) {
 	withTempDir(t)
-	if err := initProject(); err != nil {
+	if err := initProject(nil); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{".hidemyenv.toml", ".env.example", ".env.safe", ".env.hidemyenv", ".gitignore"} {
@@ -26,6 +26,68 @@ func TestInitProjectCreatesSafeDefaults(t *testing.T) {
 		if !strings.Contains(string(gitignore), want) {
 			t.Fatalf(".gitignore missing %s", want)
 		}
+	}
+	if _, err := os.Stat("justfile"); !os.IsNotExist(err) {
+		t.Fatal("init without --scripts should not create justfile")
+	}
+}
+
+func TestInitProjectWithScriptsCreatesJustfile(t *testing.T) {
+	withTempDir(t)
+	if err := os.WriteFile("main.py", []byte("print('hello')\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("uv.lock", []byte("version = 1\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := initProject([]string{"--scripts"}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile("justfile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+	for _, want := range []string{
+		"env-run *args:",
+		"hidemyenv run -- {{args}}",
+		"dev:",
+		"hidemyenv run -- uv run main.py",
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("justfile missing %q in:\n%s", want, content)
+		}
+	}
+}
+
+func TestInitProjectWithScriptsAppendsExistingJustfile(t *testing.T) {
+	withTempDir(t)
+	if err := os.WriteFile("Justfile", []byte("test:\n\tgo test ./...\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := initProject([]string{"--scripts"}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile("Justfile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "test:\n\tgo test ./...") {
+		t.Fatalf("existing justfile content was not preserved:\n%s", content)
+	}
+	if !strings.Contains(content, "env-run *args:") {
+		t.Fatalf("env-run recipe was not appended:\n%s", content)
+	}
+	if _, err := os.Stat("justfile"); !os.IsNotExist(err) {
+		t.Fatal("should append to existing Justfile instead of creating lowercase justfile")
+	}
+}
+
+func TestInitProjectRejectsUnknownFlag(t *testing.T) {
+	withTempDir(t)
+	if err := initProject([]string{"--unknown"}); err == nil {
+		t.Fatal("expected usage error")
 	}
 }
 

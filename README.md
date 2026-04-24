@@ -18,6 +18,8 @@ hidemyenv run -- npm run dev
 
 Secrets are decrypted in memory and injected into the child process environment. `hidemyenv` does not write a plaintext `.env` file or print secret values.
 
+`.env.safe` is only a redacted reference file. Runtime libraries such as `python-dotenv`, Node dotenv, or framework env loaders do not read `.env.safe` automatically.
+
 ## Why
 
 AI coding tools often need to inspect your project files. If your workspace contains `.env`, `.env.local`, or other plaintext secret files, those values can be read accidentally.
@@ -103,6 +105,12 @@ Initialize `hidemyenv`:
 hidemyenv init
 ```
 
+Optionally add local command wrappers:
+
+```sh
+hidemyenv init --scripts
+```
+
 Add one secret manually:
 
 ```sh
@@ -114,6 +122,8 @@ Run your app with decrypted secrets injected at runtime:
 ```sh
 hidemyenv run -- npm run dev
 ```
+
+Your app receives the real values only when it is started through `hidemyenv run`.
 
 Check for unsafe plaintext env files:
 
@@ -177,12 +187,26 @@ hidemyenv run -- npm test
 hidemyenv run -- go test ./...
 ```
 
-Avoid testing with commands that print the entire environment, such as `env`, because those commands will print the secrets that were intentionally injected.
+Output from `hidemyenv run` is filtered so vault values are printed as `***REDACTED***` if a child process logs them. The child process still receives the real values in its environment.
+
+Avoid testing with commands that print the entire environment, such as `env`, because unrelated secrets inherited from your shell may not be managed by the vault.
 
 Use a safer check instead:
 
 ```sh
 hidemyenv run -- sh -c 'test -n "$DATABASE_URL" && echo "DATABASE_URL is available"'
+```
+
+If you initialized with `--scripts`, you can also use the generated `justfile`:
+
+```sh
+just env-run uv run main.py
+```
+
+When `hidemyenv` can detect a default development entrypoint, it also adds:
+
+```sh
+just dev
 ```
 
 ## macOS Keychain
@@ -245,7 +269,7 @@ Files that should not remain as plaintext in the workspace:
 ## Commands
 
 ```text
-hidemyenv init
+hidemyenv init [--scripts]
 hidemyenv set KEY
 hidemyenv import [.env]
 hidemyenv list
