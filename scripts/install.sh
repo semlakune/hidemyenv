@@ -19,6 +19,26 @@ need_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "missing required command: $1"
 }
 
+source_version() {
+  if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    git describe --tags --dirty --always 2>/dev/null || printf 'dev'
+  else
+    printf 'dev'
+  fi
+}
+
+source_commit() {
+  if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    git rev-parse --short HEAD 2>/dev/null || printf 'local'
+  else
+    printf 'local'
+  fi
+}
+
+build_date() {
+  date -u +%Y-%m-%dT%H:%M:%SZ
+}
+
 detect_platform() {
   os="$(uname -s | tr '[:upper:]' '[:lower:]')"
   arch="$(uname -m)"
@@ -41,9 +61,24 @@ detect_platform() {
 install_binary() {
   src="$1"
   mkdir -p "$INSTALL_DIR"
+
+  if [ -x "$INSTALL_DIR/$BINARY_NAME" ]; then
+    old_version="$($INSTALL_DIR/$BINARY_NAME version 2>/dev/null || true)"
+    if [ -n "$old_version" ]; then
+      info "current version: $old_version"
+    else
+      info "current version: unknown"
+    fi
+  fi
+
   cp "$src" "$INSTALL_DIR/$BINARY_NAME"
   chmod 0755 "$INSTALL_DIR/$BINARY_NAME"
   info "installed $BINARY_NAME to $INSTALL_DIR/$BINARY_NAME"
+
+  new_version="$($INSTALL_DIR/$BINARY_NAME version 2>/dev/null || true)"
+  if [ -n "$new_version" ]; then
+    info "installed version: $new_version"
+  fi
 
   case ":$PATH:" in
     *":$INSTALL_DIR:"*) ;;
@@ -59,7 +94,10 @@ install_from_source() {
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' EXIT INT TERM
   info "building $BINARY_NAME from local source"
-  go build -o "$tmp/$BINARY_NAME" ./cmd/hidemyenv
+  version="$(source_version)"
+  commit="$(source_commit)"
+  date="$(build_date)"
+  go build -ldflags="-X hidemyenv/internal/version.Version=$version -X hidemyenv/internal/version.Commit=$commit -X hidemyenv/internal/version.Date=$date" -o "$tmp/$BINARY_NAME" ./cmd/hidemyenv
   install_binary "$tmp/$BINARY_NAME"
 }
 

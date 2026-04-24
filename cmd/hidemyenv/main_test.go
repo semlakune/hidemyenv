@@ -4,6 +4,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"hidemyenv/internal/vault"
 )
 
 func TestInitProjectCreatesSafeDefaults(t *testing.T) {
@@ -31,6 +33,38 @@ func TestSetRejectsInvalidKeyBeforePrompt(t *testing.T) {
 	withTempDir(t)
 	if err := setSecret([]string{"1INVALID"}); err == nil {
 		t.Fatal("expected invalid key error")
+	}
+}
+
+func TestImportEnvFileEncryptsValues(t *testing.T) {
+	withTempDir(t)
+	if err := os.WriteFile(".env", []byte("DATABASE_URL=postgres://secret\nJWT_SECRET=secret\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	count, err := importEnvFile(".env", "password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatalf("count = %d, want 2", count)
+	}
+	data, err := os.ReadFile(vault.DefaultPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "postgres://secret") || strings.Contains(string(data), "JWT_SECRET=secret") {
+		t.Fatal("vault contains plaintext secret")
+	}
+	f, err := vault.Load(vault.DefaultPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values, err := f.Values("password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if values["DATABASE_URL"] != "postgres://secret" || values["JWT_SECRET"] != "secret" {
+		t.Fatalf("unexpected imported values: %#v", values)
 	}
 }
 

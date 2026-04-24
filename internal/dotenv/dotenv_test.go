@@ -46,3 +46,35 @@ func TestKeyFromLine(t *testing.T) {
 		}
 	}
 }
+
+func TestParseFileReadsDotenvValues(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".env")
+	content := strings.Join([]string{
+		"# comment",
+		"DATABASE_URL=postgres://secret",
+		"JWT_SECRET='single quoted secret'",
+		`OPENAI_API_KEY="double quoted secret"`,
+		"EMPTY=",
+		"export EXPORTED=value",
+	}, "\n") + "\n"
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	values, err := ParseFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"DATABASE_URL":   "postgres://secret",
+		"JWT_SECRET":     "single quoted secret",
+		"OPENAI_API_KEY": "double quoted secret",
+		"EMPTY":          "",
+		"EXPORTED":       "value",
+	}
+	for key, value := range want {
+		if values[key] != value {
+			t.Fatalf("%s=%q, want %q", key, values[key], value)
+		}
+	}
+}

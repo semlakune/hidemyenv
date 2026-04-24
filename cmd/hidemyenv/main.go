@@ -18,6 +18,7 @@ import (
 	"hidemyenv/internal/keychain"
 	"hidemyenv/internal/runner"
 	"hidemyenv/internal/vault"
+	"hidemyenv/internal/version"
 )
 
 const (
@@ -45,6 +46,8 @@ func run(args []string) error {
 		return initProject()
 	case "set":
 		return setSecret(args[1:])
+	case "import":
+		return importEnv(args[1:])
 	case "list":
 		return listSecrets()
 	case "get":
@@ -57,6 +60,9 @@ func run(args []string) error {
 		return runDoctor()
 	case "keychain":
 		return keychainCommand(args[1:])
+	case "version", "--version", "-v":
+		fmt.Println(version.String())
+		return nil
 	case "help", "--help", "-h":
 		usage()
 		return nil
@@ -71,12 +77,14 @@ func usage() {
 Usage:
   hidemyenv init
   hidemyenv set KEY
+  hidemyenv import [.env]
   hidemyenv list
   hidemyenv get KEY
   hidemyenv safe
   hidemyenv run -- <command>
   hidemyenv doctor
-  hidemyenv keychain status|store|delete`)
+  hidemyenv keychain status|store|delete
+  hidemyenv version`)
 }
 
 func initProject() error {
@@ -126,6 +134,61 @@ func setSecret(args []string) error {
 		return err
 	}
 	return writeSafeFile()
+}
+
+func importEnv(args []string) error {
+	if len(args) > 1 {
+		return errors.New("usage: hidemyenv import [.env]")
+	}
+	path := ".env"
+	if len(args) == 1 {
+		path = args[0]
+	}
+	password, err := readVaultPassword()
+	if err != nil {
+		return err
+	}
+	count, err := importEnvFile(path, password)
+	if err != nil {
+		return err
+	}
+	if err := writeSafeFile(); err != nil {
+		return err
+	}
+	fmt.Printf("imported %d secret(s) from %s\n", count, path)
+	fmt.Printf("plaintext source remains at %s; remove it after verifying your app runs with hidemyenv\n", path)
+	return nil
+}
+
+func importEnvFile(path, password string) (int, error) {
+	values, err := dotenv.ParseFile(path)
+	if err != nil {
+		return 0, err
+	}
+	if len(values) == 0 {
+		return 0, errors.New("no env values found to import")
+	}
+	f, err := vault.Load(vault.DefaultPath)
+	if err != nil {
+		return 0, err
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		if !vault.ValidKey(key) {
+			return 0, fmt.Errorf("invalid env key: %s", key)
+		}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		if err := f.Set(key, values[key], password); err != nil {
+			return 0, err
+		}
+	}
+	if err := f.Save(vault.DefaultPath); err != nil {
+		return 0, err
+	}
+	return len(keys), nil
 }
 
 func listSecrets() error {

@@ -56,11 +56,14 @@ jobs:
           GOOS: ${{ matrix.os }}
           GOARCH: ${{ matrix.arch }}
           CGO_ENABLED: "0"
+          VERSION: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
           name="hidemyenv-${GOOS}_${GOARCH}"
+          date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           mkdir -p "dist/${name}"
-          go build -trimpath -ldflags="-s -w" -o "dist/${name}/hidemyenv" ./cmd/hidemyenv
+          go build -trimpath -ldflags="-s -w -X hidemyenv/internal/version.Version=${VERSION} -X hidemyenv/internal/version.Commit=${COMMIT} -X hidemyenv/internal/version.Date=${date}" -o "dist/${name}/hidemyenv" ./cmd/hidemyenv
           tar -C "dist/${name}" -czf "dist/${name}.tar.gz" hidemyenv
 
       - name: Upload artifact
