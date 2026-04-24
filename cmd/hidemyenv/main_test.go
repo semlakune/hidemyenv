@@ -79,8 +79,41 @@ func TestInitProjectWithScriptsAppendsExistingJustfile(t *testing.T) {
 	if !strings.Contains(content, "env-run *args:") {
 		t.Fatalf("env-run recipe was not appended:\n%s", content)
 	}
-	if _, err := os.Stat("justfile"); !os.IsNotExist(err) {
-		t.Fatal("should append to existing Justfile instead of creating lowercase justfile")
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.Name() == "justfile" {
+			t.Fatal("should append to existing Justfile instead of creating lowercase justfile")
+		}
+	}
+}
+
+func TestInitProjectWithScriptsDoesNotDuplicateExistingDevRecipe(t *testing.T) {
+	withTempDir(t)
+	if err := os.WriteFile("justfile", []byte("dev:\n\tgo run .\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("main.py", []byte("print('hello')\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("uv.lock", []byte("version = 1\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := initProject([]string{"--scripts"}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile("justfile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+	if strings.Count(content, "dev:") != 1 {
+		t.Fatalf("expected existing dev recipe to be preserved without duplication:\n%s", content)
+	}
+	if !strings.Contains(content, "env-run *args:") {
+		t.Fatalf("env-run recipe was not appended:\n%s", content)
 	}
 }
 
